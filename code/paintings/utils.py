@@ -11,7 +11,7 @@ from torchvision import transforms
 
 
 class PaintingsDataset(Dataset):
-    def __init__(self, image_dir, transform=None):
+    def __init__(self, image_dir, transform=None, limit=1000):
         """
         Args:
             image_dir (str): Directory with all the images.
@@ -21,7 +21,7 @@ class PaintingsDataset(Dataset):
         self.transform = transform
 
         # List all files in the directory
-        self.image_files = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))][:1000]
+        self.image_files = [f for f in os.listdir(image_dir) if os.path.isfile(os.path.join(image_dir, f))][:limit]
 
     def __len__(self):
         """
@@ -490,3 +490,154 @@ def loss_decoder(output, labels):
 def loss_regularization(output, target):
     loss = F.pairwise_distance(output, target, p=2, keepdim=False).sum()
     return loss
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# Generator
+class AttentionBlock(nn.Module):
+    def __init__(self, in_channels, g_channels, inter_channels):
+        super(AttentionBlock, self).__init__()
+        self.theta = nn.Conv2d(in_channels, inter_channels, kernel_size=2, stride=2, bias=False)
+        self.phi = nn.Conv2d(g_channels, inter_channels, kernel_size=1, bias=False)
+        self.psi = nn.Conv2d(inter_channels, 1, kernel_size=1, bias=True)
+        self.sigmoid = nn.Sigmoid()
+        self.upsample = nn.ConvTranspose2d(1, 1, kernel_size=2, stride=2)
+
+    def forward(self, x, g):
+        theta_x = self.theta(x)
+        phi_g = self.phi(g)
+        sum_features = theta_x + phi_g
+        psi = self.sigmoid(self.psi(sum_features))
+        upsampled_psi = self.upsample(psi)
+        return x * upsampled_psi
+
+class AttentionUNetGenerator(nn.Module):
+    def __init__(self, in_channels, out_channels, features=64):
+        super(AttentionUNetGenerator, self).__init__()
+        self.encoder1 = self._block(in_channels, features)
+        self.encoder2 = self._block(features, features * 2)
+        self.encoder3 = self._block(features * 2, features * 4)
+        self.encoder4 = self._block(features * 4, features * 8)
+        
+        self.bottleneck = self._block(features * 8, features * 16)
+        
+        self.attention4 = AttentionBlock(features * 8, features * 16, features * 4)
+        self.attention3 = AttentionBlock(features * 4, features * 8, features * 2)
+        self.attention2 = AttentionBlock(features * 2, features * 4, features)
+        
+        self.up4 = self._block(features * 16, features * 8)
+        self.up3 = self._block(features * 8, features * 4)
+        self.up2 = self._block(features * 4, features * 2)
+        self.up1 = nn.Sequential(
+            nn.Conv2d(features * 2, features, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(features, out_channels, kernel_size=1)
+        )
+        self.upconv4 = nn.ConvTranspose2d(features * 16, features * 8, kernel_size=2, stride=2)
+        self.upconv3 = nn.ConvTranspose2d(features * 8, features * 4, kernel_size=2, stride=2)
+        self.upconv2 = nn.ConvTranspose2d(features * 4, features * 2, kernel_size=2, stride=2)
+        self.upconv1 = nn.ConvTranspose2d(features * 2, features, kernel_size=2, stride=2)
+
+    def forward(self, x):
+        e1 = self.encoder1(x)
+        e2 = self.encoder2(nn.MaxPool2d(2)(e1))
+        e3 = self.encoder3(nn.MaxPool2d(2)(e2))
+        e4 = self.encoder4(nn.MaxPool2d(2)(e3))
+        
+        bottleneck = self.bottleneck(nn.MaxPool2d(2)(e4))
+        
+        a4 = self.attention4(e4, bottleneck)
+        up4 = self.upconv4(bottleneck)
+        up4 = self.up4(torch.cat([up4, a4], dim=1))
+        
+        a3 = self.attention3(e3, up4)
+        up3 = self.upconv3(up4)
+        up3 = self.up3(torch.cat([up3, a3], dim=1))
+        
+        a2 = self.attention2(e2, up3)
+        up2 = self.upconv2(up3)
+        up2 = self.up2(torch.cat([up2, a2], dim=1))
+        
+        up1 = self.upconv1(up2)
+        out = self.up1(torch.cat([up1, e1], dim=1))
+        
+        return torch.tanh(out)
+
+    def _block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+class AttentionBlock2(nn.Module):
+    def __init__(self, in_channels):
+        super(AttentionBlock2, self).__init__()
+        self.query = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
+        self.key = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
+        self.value = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+        self.gamma = nn.Parameter(torch.zeros(1))  # Learnable scalar weight
+
+    def forward(self, x):
+        batch_size, channels, height, width = x.size()
+
+        # Compute query, key, and value
+        query = self.query(x).view(batch_size, -1, height * width).permute(0, 2, 1)  # [B, H*W, C/8]
+        key = self.key(x).view(batch_size, -1, height * width)  # [B, C/8, H*W]
+        value = self.value(x).view(batch_size, -1, height * width)  # [B, C, H*W]
+
+        # Compute attention map
+        attention = torch.bmm(query, key)  # [B, H*W, H*W]
+        attention = torch.softmax(attention, dim=-1)
+
+        # Apply attention to value
+        out = torch.bmm(value, attention.permute(0, 2, 1))  # [B, C, H*W]
+        out = out.view(batch_size, channels, height, width)  # Reshape to [B, C, H, W]
+
+        # Add skip connection
+        out = self.gamma * out + x
+        return out
+
+class AttentionUNetDiscriminator(nn.Module):
+    def __init__(self, in_channels, features=64):
+        super(AttentionUNetDiscriminator, self).__init__()
+        self.encoder1 = self._block(in_channels, features)
+        self.encoder2 = self._block(features, features * 2)
+        self.attention2 = AttentionBlock2(features * 2)
+        self.encoder3 = self._block(features * 2, features * 4)
+        self.encoder4 = self._block(features * 4, features * 8)
+        self.attention4 = AttentionBlock2(features * 8)
+        self.final = nn.Conv2d(features * 8, 1, kernel_size=4, stride=1, padding=0)
+    
+    def forward(self, x):
+        e1 = self.encoder1(x)
+        e2 = self.attention2(self.encoder2(e1))
+        e3 = self.encoder3(e2)
+        e4 = self.attention4(self.encoder4(e3))
+        out = self.final(e4)
+        return torch.sigmoid(out)
+
+    def _block(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+        
+        
+if __name__=="__main__":
+    input_image = torch.randn(64, 3, 64, 64)  # Batch size of 16, RGB channels, 64x64 resolution
+    D = AttentionUNetDiscriminator(in_channels=3)
+    output = D(input_image)
+    
+    print(output.shape)  # Expected output: torch.Size([16, 1, 1, 1])
+    
+    latent_dim = 40
+    noise = torch.randn(16, latent_dim, 64, 64)
+    G = AttentionUNetGenerator(in_channels=40, out_channels=3)
+    output = G(noise)
+    
+    print(output.shape)  # Expected output: torch.Size([16, 3, 64, 64])
