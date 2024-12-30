@@ -1,12 +1,14 @@
 import numpy as np
 from torch.utils.data import Dataset
+from torch.nn.utils import spectral_norm
 import os
 from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
-
+from torch.utils.data import DataLoader
+import itertools
 
 
 
@@ -46,6 +48,22 @@ class PaintingsDataset(Dataset):
             image = self.transform(image)
 
         return image
+
+    def get_infinite_iterator(self, batch_size, num_workers=0):
+        """
+        Creates an infinite iterator that yields batches of data.
+
+        Args:
+            batch_size (int): Number of samples per batch.
+            num_workers (int): Number of subprocesses to use for data loading.
+
+        Returns:
+            Iterator that yields batches of data.
+        """
+        data_loader = DataLoader(self, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+        
+        # Create an infinite iterator over the DataLoader
+        return itertools.cycle(data_loader)
 
 
 class Generator(nn.Module):
@@ -536,10 +554,11 @@ class AttentionUNetGenerator(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(features, out_channels, kernel_size=1)
         )
-        self.upconv4 = nn.ConvTranspose2d(features * 16, features * 8, kernel_size=2, stride=2)
-        self.upconv3 = nn.ConvTranspose2d(features * 8, features * 4, kernel_size=2, stride=2)
-        self.upconv2 = nn.ConvTranspose2d(features * 4, features * 2, kernel_size=2, stride=2)
-        self.upconv1 = nn.ConvTranspose2d(features * 2, features, kernel_size=2, stride=2)
+        self.upconv4 = self._upsample(features * 16, features * 8)
+        self.upconv3 = self._upsample(features * 8, features * 4)
+        self.upconv2 = self._upsample(features * 4, features * 2)
+        self.upconv1 = self._upsample(features * 2, features)
+
 
     def forward(self, x):
         e1 = self.encoder1(x)
@@ -572,6 +591,12 @@ class AttentionUNetGenerator(nn.Module):
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
+    
+    def _upsample(self, in_channels, out_channels):
+        return nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        )
 
 class AttentionBlock2(nn.Module):
     def __init__(self, in_channels):
@@ -602,28 +627,33 @@ class AttentionBlock2(nn.Module):
         return out
 
 class AttentionUNetDiscriminator(nn.Module):
-    def __init__(self, in_channels, features=64):
+    def __init__(self, in_channels, features=64, use_sigmoid=True):
         super(AttentionUNetDiscriminator, self).__init__()
         self.encoder1 = self._block(in_channels, features)
+        self.attention1 = AttentionBlock2(features)
         self.encoder2 = self._block(features, features * 2)
         self.attention2 = AttentionBlock2(features * 2)
         self.encoder3 = self._block(features * 2, features * 4)
+        self.attention3 = AttentionBlock2(features * 4)
         self.encoder4 = self._block(features * 4, features * 8)
         self.attention4 = AttentionBlock2(features * 8)
-        self.final = nn.Conv2d(features * 8, 1, kernel_size=4, stride=1, padding=0)
-    
+        self.final = spectral_norm(nn.Conv2d(features * 8, 1, kernel_size=4, stride=1, padding=0))
+        self.use_sigmoid = use_sigmoid
+        
     def forward(self, x):
         e1 = self.encoder1(x)
-        e2 = self.attention2(self.encoder2(e1))
-        e3 = self.encoder3(e2)
-        e4 = self.attention4(self.encoder4(e3))
+        e2 = self.encoder2(e1)
+        e3 = self.attention3(self.encoder3(e2))
+        e4 = self.encoder4(e3)
         out = self.final(e4)
-        return torch.sigmoid(out)
+        if self.use_sigmoid:
+            return torch.sigmoid(out)
+        else:
+            return out
 
     def _block(self, in_channels, out_channels):
         return nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
+            spectral_norm(nn.Conv2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1, bias=False)),
             nn.LeakyReLU(0.2, inplace=True)
         )
         
