@@ -167,40 +167,184 @@ class DownSample(nn.Module):
         x1 = self.conv(x)
         return x1, self.max_pool(x1)
 
+# class UpSample(nn.Module):
+#     def __init__(self, input_channels, output_channels):
+#         super().__init__()
+#         self.Upsample = nn.ConvTranspose2d(input_channels, input_channels // 2, kernel_size=2, stride=2)
+#         self.conv = DoubleConv(input_channels, output_channels)
+
+#     def forward(self, x1, x2):
+#         x1 = self.Upsample(x1)
+#         x = torch.cat([x1,x2], 1)
+#         return self.conv(x)
+
+
 class UpSample(nn.Module):
     def __init__(self, input_channels, output_channels):
         super().__init__()
-        self.Upsample = nn.ConvTranspose2d(input_channels, input_channels // 2, kernel_size=2, stride=2)
-        self.conv = DoubleConv(input_channels, output_channels)
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.conv = nn.Conv2d(input_channels, output_channels, kernel_size=3, stride=1, padding=1, bias=False)
 
     def forward(self, x1, x2):
-        x1 = self.Upsample(x1)
-        x = torch.cat([x1,x2], 1)
+        x1 = self.upsample(x1)
+        x = torch.cat([x1, x2], 1)
+
         return self.conv(x)
 
 
+
+# class Unet_Discriminator(nn.Module):
+#     def __init__(self, input_channels, n_classes):
+#         super().__init__()
+#         # Input size: (3, 64, 64)
+#         self.down_1 = DownSample(input_channels, 64)
+#         # Input size: (64, 32, 32)
+#         self.down_2 = DownSample(64, 128)
+#         # Input size: (128, 16, 16)
+#         self.down_3 = DownSample(128, 256)
+#         # Input size: (256, 8, 8)
+#         self.down_4 = DownSample(256, 512)
+#         # Input size: (512, 4, 4)
+#         self.down_5 = DownSample(512, 1024)
+#         # Input size: (1024, 2, 2)
+#         self.down_6 = DownSample(1024, 2048) # Output size: (2048, 1, 1)
+
+#         self.fc1 = nn.Linear(2048 * 1, 1, bias=False)
+#         self.activation_1 = nn.Sigmoid()
+
+#         self.bottle_neck = DoubleConv(2048, 2048)
+
+#         # Input size: (2048, 1, 1)
+#         self.up_1 = UpSample(2048, 1024)
+#         # Input size: (1024, 2, 2)
+#         self.up_2 = UpSample(1024, 512)
+#         # Input size: (512, 4, 4)
+#         self.up_3 = UpSample(512, 256)
+#         # Input size: (256, 8, 8)
+#         self.up_4 = UpSample(256, 128)
+#         # Input size: (128, 16, 16)
+#         self.up_5 = UpSample(128, 64)
+#         # Input size: (64, 32, 32)
+#         self.up_6 = UpSample(64, 32) # Output size: (32, 64, 64)
+
+#         self.output = nn.Conv2d(in_channels=32, out_channels=1, kernel_size=1) 
+
+#     def forward(self, x):
+#         down1, p1 = self.down_1(x)
+#         down2, p2 = self.down_2(p1)
+#         down3, p3 = self.down_3(p2)
+#         down4, p4 = self.down_4(p3)
+#         down5, p5 = self.down_5(p4)
+#         down6, p6 = self.down_6(p5)
+
+#         p6_pooled = torch.sum(p6, dim=[2,3])
+#         out_1 = self.fc1(p6_pooled)
+#         out_1 = self.activation_1(out_1)
+#         b = self.bottle_neck(p6)
+
+
+#         up1 = self.up_1(b, down6)
+#         up2 = self.up_2(up1, down5)
+#         up3 = self.up_3(up2, down4)
+#         up4 = self.up_4(up3, down3)
+#         up5 = self.up_5(up4, down2)
+#         up6 = self.up_6(up5, down1)
+
+#         out_2 = self.output(up6)
+#         out_2 = self.activation_1(out_2)
+
+#         return out_1, out_2
+    
+# class Unet_Discriminator(nn.Module):
+    # def __init__(self, input_channels, n_classes):
+    #     super().__init__()
+    #     # Input size: (3, 64, 64)
+    #     self.down_1 = DownSample(input_channels, 64)
+    #     # Input size: (64, 32, 32)
+    #     self.down_2 = DownSample(64, 128)
+    #     # Input size: (128, 16, 16)
+    #     self.down_3 = DownSample(128, 256)
+    #     # Input size: (256, 8, 8)
+    #     self.down_4 = DownSample(256, 512)
+    #     # Input size: (512, 4, 4)
+    #     self.down_5 = DownSample(512, 1024)
+    #     # Input size: (1024, 2, 2)
+    #     self.down_6 = DownSample(1024, 2048)  # Output size: (2048, 1, 1)
+
+    #     self.fc1 = nn.Linear(2048 * 1, 1, bias=False)
+    #     self.activation_1 = nn.Sigmoid()
+
+    #     self.bottle_neck = DoubleConv(2048, 2048)
+
+    #     # Input size: (2048, 1, 1)
+    #     self.up_1 = UpSample(4096, 1024)
+    #     # Input size: (1024, 2, 2)
+    #     self.up_2 = UpSample(2048, 1024)
+    #     # Input size: (512, 4, 4)
+    #     self.up_3 = UpSample(1024, 512)
+    #     # Input size: (256, 8, 8)
+    #     self.up_4 = UpSample(512, 256)
+    #     # Input size: (128, 16, 16)
+    #     self.up_5 = UpSample(256, 128)
+    #     # Input size: (64, 32, 32)
+    #     self.up_6 = UpSample(128, 64)  # Output size: (32, 64, 64)
+
+    #     self.output = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=1) 
+
+    # def forward(self, x):
+    #     down1, p1 = self.down_1(x)
+    #     down2, p2 = self.down_2(p1)
+    #     down3, p3 = self.down_3(p2)
+    #     down4, p4 = self.down_4(p3)
+    #     down5, p5 = self.down_5(p4)
+    #     down6, p6 = self.down_6(p5)
+
+    #     p6_pooled = torch.sum(p6, dim=[2,3])
+    #     out_1 = self.fc1(p6_pooled)
+    #     out_1 = self.activation_1(out_1)
+    #     b = self.bottle_neck(p6)
+
+    #     print(b.shape)
+    #     print(down5.shape)
+    #     # Correcting the upsampling channels:
+    #     up1 = self.up_1(b, down6)  # Concatenate b and down6
+    #     up2 = self.up_2(up1, down5)  # Concatenate up1 and down5
+    #     up3 = self.up_3(up2, down4)  # Concatenate up2 and down4
+    #     up4 = self.up_4(up3, down3)  # Concatenate up3 and down3
+    #     up5 = self.up_5(up4, down2)  # Concatenate up4 and down2
+    #     up6 = self.up_6(up5, down1)  # Concatenate up5 and down1
+
+    #     out_2 = self.output(up6)
+    #     out_2 = self.activation_1(out_2)
+
+    #     return out_1, out_2
+
 class Unet_Discriminator(nn.Module):
     def __init__(self, input_channels, n_classes):
-        super().__init__()
+        super(Unet_Discriminator, self).__init__()
 
-        self.down_1 = DownSample(input_channels, 64)
-        self.down_2 = DownSample(64, 128)
-        self.down_3 = DownSample(128, 256)
-        self.down_4 = DownSample(256, 512)
-        self.down_5 = DownSample(512, 1024)
+        # Downsample layers
+        self.down_1 = DownSample(input_channels, 64)    # (64, 32, 32)
+        self.down_2 = DownSample(64, 128)               # (128, 16, 16)
+        self.down_3 = DownSample(128, 256)              # (256, 8, 8)
+        self.down_4 = DownSample(256, 512)              # (512, 4, 4)
+        self.down_5 = DownSample(512, 1024)             # (1024, 2, 2)
+        self.down_6 = DownSample(1024, 2048)            # (2048, 1, 1)
 
-        self.fc1 = nn.Linear(1024 * 1, 1, bias=False)
+        self.fc1 = nn.Linear(2048 * 1 * 1, 1, bias=False)  # Fully connected layer for classification
         self.activation_1 = nn.Sigmoid()
 
-        self.bottle_neck = DoubleConv(1024, 2048)
+        self.bottle_neck = DoubleConv(2048, 2048)
 
-        self.up_1 = UpSample(2048, 1024)
-        self.up_2 = UpSample(1024, 512)
-        self.up_3 = UpSample(512, 256)
-        self.up_4 = UpSample(256, 128)
-        self.up_5 = UpSample(128, 64)
+        # Upsample layers
+        self.up_1 = UpSample(2048 + 2048, 1024)    # (1024, 2, 2)
+        self.up_2 = UpSample(1024 + 1024, 512)     # (512, 4, 4)
+        self.up_3 = UpSample(512 + 512, 256)       # (256, 8, 8)
+        self.up_4 = UpSample(256 + 256, 128)       # (128, 16, 16)
+        self.up_5 = UpSample(128 + 128, 64)        # (64, 32, 32)
+        self.up_6 = UpSample(64 + 64, 32)          # (32, 64, 64)
 
-        self.output = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=1) 
+        self.output = nn.Conv2d(32, out_channels=1, kernel_size=1)
 
     def forward(self, x):
         down1, p1 = self.down_1(x)
@@ -208,24 +352,26 @@ class Unet_Discriminator(nn.Module):
         down3, p3 = self.down_3(p2)
         down4, p4 = self.down_4(p3)
         down5, p5 = self.down_5(p4)
+        down6, p6 = self.down_6(p5)
 
-        p5_pooled = torch.sum(p5, dim=[2,3])
-        out_1 = self.fc1(p5_pooled)
+        p6_pooled = torch.sum(p6, dim=[2, 3])
+        out_1 = self.fc1(p6_pooled)
         out_1 = self.activation_1(out_1)
-        b = self.bottle_neck(p5)
+        b = self.bottle_neck(p6)
 
+        up1 = self.up_1(b, down6)
+        up2 = self.up_2(up1, down5)
+        up3 = self.up_3(up2, down4)
+        up4 = self.up_4(up3, down3)
+        up5 = self.up_5(up4, down2)
+        up6 = self.up_6(up5, down1)
 
-        up1 = self.up_1(b, down5)
-        up2 = self.up_2(up1, down4)
-        up3 = self.up_3(up2, down3)
-        up4 = self.up_4(up3, down2)
-        up5 = self.up_5(up4, down1)
-
-        out_2 = self.output(up5)
+        out_2 = self.output(up6)
         out_2 = self.activation_1(out_2)
-
         return out_1, out_2
-    
+
+
+
 class Unet_Discriminator_V2(nn.Module):
     def __init__(self, input_channels, n_classes):
         super().__init__()
@@ -291,54 +437,108 @@ class Unet_Generator_V2(nn.Module):
         x = self.model(x)
         # x = self.final_layer(x)
         return x
-    
+
 
 class Unet_Generator(nn.Module):
-    def __init__(self, latent_dim, channels_out):
+    def __init__(self, latent_dim, channels_out=3):
         super(Unet_Generator, self).__init__()
-        self.model = nn.Sequential(
+
+        self.initial_layer = nn.Sequential(
             # Input: latent_dim x 1 x 1
-            nn.ConvTranspose2d(latent_dim, 1024, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(),
-
-            # Upscale to 4x4
-            nn.ConvTranspose2d(1024, 512, 4, 2, 1, bias=False),
+            nn.Conv2d(latent_dim, 512, kernel_size=1, stride=1, padding=0, bias=False),
             nn.BatchNorm2d(512),
-            nn.ReLU(),
-
-            # Upscale to 8x8
-            nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-
-            # Upscale to 16x16
-            nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-
-            # Upscale to 32x32
-            nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-
-            # Upscale to 64x64
-            nn.ConvTranspose2d(64, channels_out, 4, 2, 1, bias=False),
-            nn.Tanh()  # Output: channels_out x 128 x 128
+            nn.ReLU()
         )
 
-        # Final layer to upscale to 256x256
-        # self.final_layer = nn.ConvTranspose2d(channels_out, channels_out, 4, 2, 1, bias=False)
+        self.upsample_blocks = nn.ModuleList([
+            # Upscale to 2x2
+            self._upsample_block(512, 256),
+            # Upscale to 4x4
+            self._upsample_block(256, 128),
+            # Upscale to 8x8
+            self._upsample_block(128, 64),
+            # Upscale to 16x16
+            self._upsample_block(64, 32),
+            # Upscale to 32x32
+            self._upsample_block(32, 16),
+            # Upscale to 64x64
+            self._upsample_block(16, channels_out, final_block=True)
+        ])
+
+    def _upsample_block(self, in_channels, out_channels, final_block=False):
+        """Helper function to create an upsample block."""
+        layers = [
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        ]
+        if not final_block:
+            layers += [
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU()
+            ]
+        else:
+            layers.append(nn.Tanh())
+        return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.model(x)
-        # x = self.final_layer(x)
+        # Reshape latent vector for initial layer
+        x = x.view(x.size(0), x.size(1), 1, 1)
+        x = self.initial_layer(x)
+
+        # Pass through upsample blocks
+        for block in self.upsample_blocks:
+            x = block(x)
+        
         return x
+
+    
+
+# class Unet_Generator(nn.Module):
+#     def __init__(self, latent_dim, channels_out):
+#         super(Unet_Generator, self).__init__()
+#         self.model = nn.Sequential(
+#             # Input: latent_dim x 1 x 1
+#             nn.ConvTranspose2d(latent_dim, 1024, 4, 1, 0, bias=False),
+#             nn.BatchNorm2d(1024),
+#             nn.ReLU(),
+
+#             # Upscale to 4x4
+#             nn.ConvTranspose2d(1024, 512, 4, 2, 1, bias=False),
+#             nn.BatchNorm2d(512),
+#             nn.ReLU(),
+
+#             # Upscale to 8x8
+#             nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),
+#             nn.BatchNorm2d(256),
+#             nn.ReLU(),
+
+#             # Upscale to 16x16
+#             nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),
+#             nn.BatchNorm2d(128),
+#             nn.ReLU(),
+
+#             # Upscale to 32x32
+#             nn.ConvTranspose2d(128, 64, 4, 2, 1, bias=False),
+#             nn.BatchNorm2d(64),
+#             nn.ReLU(),
+
+#             # Upscale to 64x64
+#             nn.ConvTranspose2d(64, channels_out, 4, 2, 1, bias=False),
+#             nn.Tanh()  # Output: channels_out x 128 x 128
+#         )
+
+#         # Final layer to upscale to 256x256
+#         # self.final_layer = nn.ConvTranspose2d(channels_out, channels_out, 4, 2, 1, bias=False)
+
+    # def forward(self, x):
+    #     x = self.model(x)
+    #     # x = self.final_layer(x)
+    #     return x
     
 def unet_d_criterion_without_cutmix(output, label, batch_size):
     out_1, out_2 = output
     label_2 = label.view(batch_size, 1, 1, 1)
-    label_2 = label_2.expand(-1, 1, 128, 128)
+    label_2 = label_2.expand(-1, 1, 64, 64)
 
     out_1 = torch.clamp(out_1, 1e-10, 1 - 1e-10)
     out_2 = torch.clamp(out_2, 1e-10, 1 - 1e-10)
