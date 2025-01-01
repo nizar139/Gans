@@ -328,21 +328,27 @@ class Unet_Discriminator(nn.Module):
         self.down_2 = DownSample(64, 128)               # (128, 16, 16)
         self.down_3 = DownSample(128, 256)              # (256, 8, 8)
         self.down_4 = DownSample(256, 512)              # (512, 4, 4)
-        self.down_5 = DownSample(512, 1024)             # (1024, 2, 2)
-        self.down_6 = DownSample(1024, 2048)            # (2048, 1, 1)
+        # self.down_5 = DownSample(512, 1024)             # (1024, 2, 2)
+        # self.down_6 = DownSample(1024, 2048)            # (2048, 1, 1)
 
-        self.fc1 = nn.Linear(2048 * 1 * 1, 1, bias=False)  # Fully connected layer for classification
+        # self.fc1 = nn.Linear(2048 * 1 * 1, 1, bias=False)  # Fully connected layer for classification
+        self.fc1 = nn.Linear(512 * 1 * 1, 1, bias=False)
         self.activation_1 = nn.Sigmoid()
 
-        self.bottle_neck = DoubleConv(2048, 2048)
+        # self.bottle_neck = DoubleConv(2048, 2048)
+        self.bottle_neck = DoubleConv(512, 512)
 
         # Upsample layers
-        self.up_1 = UpSample(2048 + 2048, 1024)    # (1024, 2, 2)
-        self.up_2 = UpSample(1024 + 1024, 512)     # (512, 4, 4)
-        self.up_3 = UpSample(512 + 512, 256)       # (256, 8, 8)
-        self.up_4 = UpSample(256 + 256, 128)       # (128, 16, 16)
-        self.up_5 = UpSample(128 + 128, 64)        # (64, 32, 32)
-        self.up_6 = UpSample(64 + 64, 32)          # (32, 64, 64)
+        # self.up_1 = UpSample(512 + 2048, 1024)    # (1024, 2, 2)
+        # self.up_2 = UpSample(1024 + 1024, 512)     # (512, 4, 4)
+        # self.up_3 = UpSample(512 + 512, 256)       # (256, 8, 8)
+        # self.up_4 = UpSample(256 + 256, 128)       # (128, 16, 16)
+        # self.up_5 = UpSample(128 + 128, 64)        # (64, 32, 32)
+        # self.up_6 = UpSample(64 + 64, 32)          # (32, 64, 64)
+        self.up_1 = UpSample(512 + 512, 256)       # (256, 8, 8)
+        self.up_2 = UpSample(256 + 256, 128)       # (128, 16, 16)
+        self.up_3 = UpSample(128 + 128, 64)        # (64, 32, 32)
+        self.up_4 = UpSample(64 + 64, 32)          # (32, 64, 64)
 
         self.output = nn.Conv2d(32, out_channels=1, kernel_size=1)
 
@@ -351,26 +357,87 @@ class Unet_Discriminator(nn.Module):
         down2, p2 = self.down_2(p1)
         down3, p3 = self.down_3(p2)
         down4, p4 = self.down_4(p3)
-        down5, p5 = self.down_5(p4)
-        down6, p6 = self.down_6(p5)
+        # down5, p5 = self.down_5(p4)
+        # down6, p6 = self.down_6(p5)
 
-        p6_pooled = torch.sum(p6, dim=[2, 3])
-        out_1 = self.fc1(p6_pooled)
+        # p6_pooled = torch.sum(p6, dim=[2, 3])
+        # out_1 = self.fc1(p6_pooled)
+        # out_1 = self.activation_1(out_1)
+        # b = self.bottle_neck(p6)
+        p4_pooled = torch.sum(p4, dim=[2, 3])
+        out_1 = self.fc1(p4_pooled)
         out_1 = self.activation_1(out_1)
-        b = self.bottle_neck(p6)
+        b = self.bottle_neck(p4)
 
-        up1 = self.up_1(b, down6)
-        up2 = self.up_2(up1, down5)
-        up3 = self.up_3(up2, down4)
-        up4 = self.up_4(up3, down3)
-        up5 = self.up_5(up4, down2)
-        up6 = self.up_6(up5, down1)
+        # up1 = self.up_1(b, down6)
+        # up2 = self.up_2(up1, down5)
+        # up3 = self.up_3(up2, down4)
+        # up4 = self.up_4(up3, down3)
+        up1 = self.up_1(b, down4)
+        up2 = self.up_2(up1, down3)
+        up3 = self.up_3(up2, down2)
+        up4 = self.up_4(up3, down1)
+        # up5 = self.up_5(up4, down2)
+        # up6 = self.up_6(up5, down1)
 
-        out_2 = self.output(up6)
+        out_2 = self.output(up4)
         out_2 = self.activation_1(out_2)
         return out_1, out_2
 
 
+
+
+class Unet_Generator(nn.Module):
+    def __init__(self, latent_dim, channels_out=3):
+        super(Unet_Generator, self).__init__()
+
+        self.initial_layer = nn.Sequential(
+            # Input: latent_dim x 1 x 1
+            nn.Conv2d(latent_dim, 512, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU()
+        )
+
+        self.upsample_blocks = nn.ModuleList([
+            # Upscale to 2x2
+            self._upsample_block(512, 256),
+            # Upscale to 4x4
+            self._upsample_block(256, 128),
+            # Upscale to 8x8
+            self._upsample_block(128, 64),
+            # Upscale to 16x16
+            self._upsample_block(64, 32),
+            # Upscale to 32x32
+            self._upsample_block(32, 16),
+            # Upscale to 64x64
+            self._upsample_block(16, channels_out, final_block=True)
+        ])
+
+    def _upsample_block(self, in_channels, out_channels, final_block=False):
+        """Helper function to create an upsample block."""
+        layers = [
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+        ]
+        if not final_block:
+            layers += [
+                nn.BatchNorm2d(out_channels),
+                nn.ReLU()
+            ]
+        else:
+            layers.append(nn.Tanh())
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        # Reshape latent vector for initial layer
+        x = x.view(x.size(0), x.size(1), 1, 1)
+        x = self.initial_layer(x)
+
+        # Pass through upsample blocks
+        for block in self.upsample_blocks:
+            x = block(x)
+        
+        return x
 
 class Unet_Discriminator_V2(nn.Module):
     def __init__(self, input_channels, n_classes):
@@ -439,57 +506,6 @@ class Unet_Generator_V2(nn.Module):
         return x
 
 
-class Unet_Generator(nn.Module):
-    def __init__(self, latent_dim, channels_out=3):
-        super(Unet_Generator, self).__init__()
-
-        self.initial_layer = nn.Sequential(
-            # Input: latent_dim x 1 x 1
-            nn.Conv2d(latent_dim, 512, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(512),
-            nn.ReLU()
-        )
-
-        self.upsample_blocks = nn.ModuleList([
-            # Upscale to 2x2
-            self._upsample_block(512, 256),
-            # Upscale to 4x4
-            self._upsample_block(256, 128),
-            # Upscale to 8x8
-            self._upsample_block(128, 64),
-            # Upscale to 16x16
-            self._upsample_block(64, 32),
-            # Upscale to 32x32
-            self._upsample_block(32, 16),
-            # Upscale to 64x64
-            self._upsample_block(16, channels_out, final_block=True)
-        ])
-
-    def _upsample_block(self, in_channels, out_channels, final_block=False):
-        """Helper function to create an upsample block."""
-        layers = [
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
-        ]
-        if not final_block:
-            layers += [
-                nn.BatchNorm2d(out_channels),
-                nn.ReLU()
-            ]
-        else:
-            layers.append(nn.Tanh())
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        # Reshape latent vector for initial layer
-        x = x.view(x.size(0), x.size(1), 1, 1)
-        x = self.initial_layer(x)
-
-        # Pass through upsample blocks
-        for block in self.upsample_blocks:
-            x = block(x)
-        
-        return x
 
     
 
@@ -609,42 +625,78 @@ W, H = 128, 128
 
 
 
-def generate_CutMix_samples(real_batch, fake_batch, D_unet):
-    # generate mixed sample
-    ratio = np.random.rand()
-    size = real_batch.size()
-    W, H = size[2], size[3]
+# def generate_CutMix_samples(real_batch, fake_batch, D_unet):
+#     # generate mixed sample
+#     ratio = np.random.rand()
+#     size = real_batch.size()
+#     W, H = size[2], size[3]
 
-    batch_size = size[0]
-    rand_indices = torch.randperm(batch_size)
+#     batch_size = size[0]
+#     rand_indices = torch.randperm(batch_size)
 
-    target_a = real_batch.clone()  # Clone real images
-    target_b = fake_batch[rand_indices].clone()  # Clone shuffled fake images
+#     target_a = real_batch.clone()  # Clone real images
+#     target_b = fake_batch[rand_indices].clone()  # Clone shuffled fake images
 
-    # Generate random bounding box
-    bbx1, bby1, bbx2, bby2 = rand_bbox(size, ratio)
+#     # Generate random bounding box
+#     bbx1, bby1, bbx2, bby2 = rand_bbox(size, ratio)
 
-    # Generate the mask for CutMix
-    mask = torch.ones_like(real_batch)
-    mask[:, :, bbx1:bbx2, bby1:bby2] = 0  # Masking the mixed region
+#     # Generate the mask for CutMix
+#     mask = torch.ones_like(real_batch)
+#     mask[:, :, bbx1:bbx2, bby1:bby2] = 0  # Masking the mixed region
 
-    # Use torch.where to apply the CutMix without in-place modification
-    cutmixed = torch.where(mask == 1, target_a, target_b)
+#     # Use torch.where to apply the CutMix without in-place modification
+#     cutmixed = torch.where(mask == 1, target_a, target_b)
 
-    # adjust lambda to exactly match pixel ratio
-    ratio = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (W * H))
+#     # adjust lambda to exactly match pixel ratio
+#     ratio = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (W * H))
 
-    # Generate cutmix that will be used in the loss
-    D_decoder, D_g_decoder = D_unet(target_a)[1], D_unet(target_b)[1]
+#     # Generate cutmix that will be used in the loss
+#     D_decoder, D_g_decoder = D_unet(target_a)[1], D_unet(target_b)[1]
 
-    # Use torch.where to apply the CutMix in decoded results
-    cutmixed_decoded = torch.where(mask == 1, D_decoder, D_g_decoder)
+#     # Use torch.where to apply the CutMix in decoded results
+#     cutmixed_decoded = torch.where(mask == 1, D_decoder, D_g_decoder)
 
-    return ratio, cutmixed, cutmixed_decoded, target_a, target_b, bbx1, bbx2, bby1, bby2
+#     return ratio, cutmixed, cutmixed_decoded, target_a, target_b, bbx1, bbx2, bby1, bby2
 
 
+
+# def generate_CutMix_samples(real_batch, fake_batch, D_unet, device=torch.device('cpu')):
+#     batch_size, _, H, W = real_batch.size()
+
+#     # Generate random ratios for the batch
+#     ratios = torch.rand(batch_size, device=device)
+
+#     # Randomly permute the fake batch for CutMix
+#     rand_indices = torch.randperm(batch_size, device=device)
+
+#     target_a = real_batch.clone()
+#     target_b = fake_batch[rand_indices].clone()
+
+#     # Generate bounding boxes for each image in the batch
+#     bbx1, bby1, bbx2, bby2 = rand_bbox(real_batch.size(), ratios, device)
+
+#     # Apply CutMix using batch indexing
+#     cutmixed = real_batch.clone()
+#     for i in range(batch_size):
+#         cutmixed[i, :, bbx1[i]:bbx2[i], bby1[i]:bby2[i]] = target_b[i, :, bbx1[i]:bbx2[i], bby1[i]:bby2[i]]
+
+#     # Adjust ratios to match pixel ratio for each image
+#     ratios = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (W * H))
+
+#     # Generate CutMix for the decoded outputs
+#     D_decoder, D_g_decoder = D_unet(target_a)[1], D_unet(target_b)[1]
+#     cutmixed_decoded = D_decoder.clone()
+#     for i in range(batch_size):
+#         cutmixed_decoded[i, :, bbx1[i]:bbx2[i], bby1[i]:bby2[i]] = D_g_decoder[i, :, bbx1[i]:bbx2[i], bby1[i]:bby2[i]]
+
+#     return ratios, cutmixed, cutmixed_decoded, target_a, target_b, bbx1, bbx2, bby1, bby2
 
 def generate_CutMix_samples(real_batch, fake_batch, D_unet, device=torch.device('cpu')):
+    # Ensure inputs are valid
+    assert real_batch.size() == fake_batch.size(), "Real and fake batches must have the same size"
+    assert real_batch.device == device, "Real batch must be on the specified device"
+    assert fake_batch.device == device, "Fake batch must be on the specified device"
+
     batch_size, _, H, W = real_batch.size()
 
     # Generate random ratios for the batch
@@ -653,25 +705,28 @@ def generate_CutMix_samples(real_batch, fake_batch, D_unet, device=torch.device(
     # Randomly permute the fake batch for CutMix
     rand_indices = torch.randperm(batch_size, device=device)
 
-    target_a = real_batch.clone()
-    target_b = fake_batch[rand_indices].clone()
+    # Prepare targets
+    target_a = real_batch
+    target_b = fake_batch[rand_indices]
 
     # Generate bounding boxes for each image in the batch
     bbx1, bby1, bbx2, bby2 = rand_bbox(real_batch.size(), ratios, device)
 
-    # Apply CutMix using batch indexing
+    # Apply CutMix using vectorized operations
     cutmixed = real_batch.clone()
-    for i in range(batch_size):
-        cutmixed[i, :, bbx1[i]:bbx2[i], bby1[i]:bby2[i]] = target_b[i, :, bbx1[i]:bbx2[i], bby1[i]:bby2[i]]
+    cutmixed[:, :, bbx1:bbx2, bby1:bby2] = target_b[:, :, bbx1:bbx2, bby1:bby2]
 
     # Adjust ratios to match pixel ratio for each image
     ratios = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (W * H))
 
     # Generate CutMix for the decoded outputs
-    D_decoder, D_g_decoder = D_unet(target_a)[1], D_unet(target_b)[1]
+    combined_inputs = torch.cat([target_a, target_b], dim=0)
+    combined_outputs = D_unet(combined_inputs)
+    D_decoder = combined_outputs[1][:batch_size]
+    D_g_decoder = combined_outputs[1][batch_size:]
+
     cutmixed_decoded = D_decoder.clone()
-    for i in range(batch_size):
-        cutmixed_decoded[i, :, bbx1[i]:bbx2[i], bby1[i]:bby2[i]] = D_g_decoder[i, :, bbx1[i]:bbx2[i], bby1[i]:bby2[i]]
+    cutmixed_decoded[:, :, bbx1:bbx2, bby1:bby2] = D_g_decoder[:, :, bbx1:bbx2, bby1:bby2]
 
     return ratios, cutmixed, cutmixed_decoded, target_a, target_b, bbx1, bbx2, bby1, bby2
 
