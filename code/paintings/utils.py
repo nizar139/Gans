@@ -746,41 +746,43 @@ def generate_CutMix_samples(real_batch, fake_batch, D_unet, device=torch.device(
 
     return ratios, cutmixed, cutmixed_decoded, target_a, target_b, bbx1, bbx2, bby1, bby2
 
-# def generate_CutMix_samples(real_batch, fake_batch, D_unet, device):
-#     # Ensure inputs are valid
+def generate_CutMix_samples(real_batch, fake_batch, D_unet, device=torch.device('cpu')):
+    batch_size, _, H, W = real_batch.size()
 
-#     batch_size, _, H, W = real_batch.size()
+    # Generate random ratios for the batch
+    ratios = torch.rand(batch_size, device=device)
 
-#     # Generate random ratios for the batch
-#     ratios = torch.rand(batch_size, device=device)
+    # Randomly permute the fake batch for CutMix
+    rand_indices = torch.randperm(batch_size, device=device)
 
-#     # Randomly permute the fake batch for CutMix
-#     rand_indices = torch.randperm(batch_size, device=device)
+    target_a = real_batch
+    target_b = fake_batch[rand_indices]
 
-#     # Prepare targets
-#     target_a = real_batch
-#     target_b = fake_batch[rand_indices]
+    # Generate bounding boxes for each image in the batch
+    bbx1, bby1, bbx2, bby2 = rand_bbox(real_batch.size(), ratios, device)
 
-#     # Generate bounding boxes for each image in the batch
-#     bbx1, bby1, bbx2, bby2 = rand_bbox(real_batch.size(), ratios, device)
+    # Create masks for CutMix
+    x = torch.arange(W, device=device).unsqueeze(0)
+    y = torch.arange(H, device=device).unsqueeze(0)
+    mask_x = (x >= bbx1.view(-1, 1)) & (x < bbx2.view(-1, 1))
+    mask_y = (y >= bby1.view(-1, 1)) & (y < bby2.view(-1, 1))
+    mask = (mask_x.unsqueeze(1) & mask_y.unsqueeze(2)).unsqueeze(1)  # [B, 1, H, W]
 
-#     # Apply CutMix using vectorized operations
-#     cutmixed = real_batch.clone()
-#     cutmixed[:, :, bbx1:bbx2, bby1:bby2] = target_b[:, :, bbx1:bbx2, bby1:bby2]
+    # Apply CutMix directly with the mask
+    cutmixed = real_batch * (~mask) + target_b * mask
 
-#     # Adjust ratios to match pixel ratio for each image
-#     ratios = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (W * H))
+    # Adjust ratios to match pixel ratio for each image
+    bbox_area = (bbx2 - bbx1) * (bby2 - bby1)
+    ratios = 1 - (bbox_area / (W * H))
 
-#     # Generate CutMix for the decoded outputs
-#     combined_inputs = torch.cat([target_a, target_b], dim=0)
-#     combined_outputs = D_unet(combined_inputs)
-#     D_decoder = combined_outputs[1][:batch_size]
-#     D_g_decoder = combined_outputs[1][batch_size:]
+    # Generate CutMix for the decoded outputs
+    _, D_g_decoder = D_unet(target_b)
+    _, D_decoder = D_unet(target_a)
 
-#     cutmixed_decoded = D_decoder.clone()
-#     cutmixed_decoded[:, :, bbx1:bbx2, bby1:bby2] = D_g_decoder[:, :, bbx1:bbx2, bby1:bby2]
+    cutmixed_decoded = D_decoder * (~mask) + D_g_decoder * mask
 
-#     return ratios, cutmixed, cutmixed_decoded, target_a, target_b, bbx1, bbx2, bby1, bby2
+    return ratios, cutmixed, cutmixed_decoded, target_a, target_b, bbx1, bbx2, bby1, bby2
+
 
 
 def rand_bbox(size, ratios,device):
@@ -805,15 +807,15 @@ def mix(M, G, x):
 
 
 def loss_encoder(output, labels):
-    loss = F.binary_cross_entropy(output, labels, reduction='sum')
+    loss = F.binary_cross_entropy(output, labels, reduction='mean')
     return loss
 
 def loss_decoder(output, labels):
-    loss = F.binary_cross_entropy(output, labels, reduction='sum')
+    loss = F.binary_cross_entropy(output, labels, reduction='mean')
     return loss
 
 def loss_regularization(output, target):
-    loss = F.pairwise_distance(output, target, p=2, keepdim=False).sum()
+    loss = F.pairwise_distance(output, target, p=2, keepdim=False).mean()
     return loss
 
 
