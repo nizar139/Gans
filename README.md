@@ -2,7 +2,7 @@
 
 ![Project Poster](poster.png)
 
-## Introduction 🌟
+## Introduction 
 Generative Adversarial Networks (GANs) have revolutionized image synthesis, enabling the generation of realistic images from random noise. However, standard GAN training often requires extensive computational resources and large datasets. In this project, we investigate two lightweight GAN architectures aimed at achieving high-quality low-resolution image synthesis with reduced computational costs:
 
 1. **CutMix U-Net GAN**: Incorporates a U-Net discriminator with pixel-wise and image-level supervision, enhanced by CutMix augmentation for local detail preservation.
@@ -11,7 +11,7 @@ Generative Adversarial Networks (GANs) have revolutionized image synthesis, enab
 Both models are evaluated on an anime face dataset (64x64 resolution), emphasizing efficiency and quality under limited resources.
 
 ---
-## What are GANs? 🤔
+## What are GANs? 
 GANs consist of two neural networks trained adversarially:
 - **Generator (G):** Produces synthetic images from random noise.
 - **Discriminator (D):** Differentiates between real and generated images.
@@ -19,16 +19,16 @@ GANs consist of two neural networks trained adversarially:
 The two networks engage in a minimax game, pushing the generator to improve until it can fool the discriminator.
 
 ---
-## Dataset Overview 📂
+## Dataset Overview 
 
 We use an **Anime Character Dataset** from [Kaggle by Spencer Churchill and Brian Chao](https://www.kaggle.com/datasets/splcher/animefacedataset)
 
 - **Dataset Size:** 63,566 images of anime character faces, We choose a subset of the most recent 10,000 images resized to **64x64** pixels
 
 ---
-## Methodology 🛠️
+## Methodology 
 
-### Model 1: GAN with CutMix Augmentation 🎨
+### Model 1: GAN with CutMix Augmentation 
 #### Key Features:
 - **U-Net Architecture:** Used for both the generator and discriminator, allowing spatial information preservation via skip connections.
 - **Dual-Output Discriminator:** Produces both global (image-level) and local (pixel-level) authenticity outputs.
@@ -46,7 +46,7 @@ $$ \tilde{x} = M \odot x_A + (1 - M) \odot x_B $$
 Where $M$ is a binary mask with a random rectangular region set to 1.
 
 ---
-### Model 2: Attention WGAN with Diversity Loss 🤖
+### Model 2: Attention WGAN with Diversity Loss 
 #### Key Features:
 - **Attention-Enhanced U-Net Generator:** Focuses on critical image regions during upsampling.
 - **Attention-Based Critic:** Introduces attention layers in downsampling blocks to improve feature selectivity.
@@ -59,7 +59,7 @@ Where $M$ is a binary mask with a random rectangular region set to 1.
 - **Generator Loss:** Includes Wasserstein loss and diversity loss.
 
 ---
-## Training Procedure 💡
+## Training Procedure 
 ### CutMix U-Net GAN:
 1. **Discriminator Update (k = 5 per generator update):**
    - Sample real and generated images.
@@ -80,7 +80,7 @@ Where $M$ is a binary mask with a random rectangular region set to 1.
    - Optimize using Wasserstein loss and diversity loss.
 
 ---
-## Results & Observations 🎯
+## Results & Observations 
 ### Evaluation Metric:
 - **Fréchet Inception Distance (FID):** Measures similarity between real and generated images.
 
@@ -95,7 +95,7 @@ Where $M$ is a binary mask with a random rectangular region set to 1.
 
 
 ---
-## Installation & Usage 🚀
+## Installation & Usage 
 ### Prerequisites
 ```bash
 pip install torch torchvision numpy matplotlib
@@ -104,7 +104,7 @@ pip install torch torchvision numpy matplotlib
 You can test the models by running the two notebooks `Cutmix_GAN.ipynb` and `Attention_WGAN.ipynb` 
 
 ---
-## Discussion & Limitations 💭
+## Discussion & Limitations 
 - **CutMix GAN:**
   - Pros: High local detail.
   - Cons: Computationally heavier, unstable training.
@@ -119,14 +119,14 @@ You can test the models by running the two notebooks `Cutmix_GAN.ipynb` and `Att
 - Diversity loss mitigates but doesn't eliminate mode collapse.
 
 ---
-## References 📚
+## References 
 1. Edgar Schönfeld et al., 2020. [A U-Net Based Discriminator for GANs](https://arxiv.org/abs/2002.12655)
 2. Ishaan Gulrajani et al., 2017. [Improved Training of Wasserstein GANs](https://arxiv.org/abs/1704.00028)
 3. Martin Arjovsky et al., 2017. [Wasserstein GAN](https://arxiv.org/abs/1701.07875)
 4. Sangdoo Yun et al., 2019. [CutMix: Regularization Strategy to Train Strong Classifiers](https://arxiv.org/abs/1905.04899)
 
 ---
-## License 📝
+## License 
 This project is licensed under the MIT License.
 
 Feel free to reach out for inquiries or contributions!
